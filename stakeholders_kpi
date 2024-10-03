@@ -1,0 +1,24 @@
+Smash Melee: Top 8 Prediction
+Jaspar Wiart, Dan Ursu, Sungwoo Nam, Sam Schiavone, Mingming Abundo, Patrick Walsh
+
+Objective:
+Develop a machine learning model to predict the results of the top 8 bracket of Super Smash Bros. Melee tournaments using historical match data, player performance metrics, and matchup statistics. The goal is to enhance predictive analytics in esports and provide valuable insights into player performance and tournament dynamics.
+
+Business Value/Impact:
+Enhance Esports Analytics: Offer data-driven predictions to enrich tournament coverage and engage audiences.
+Inform Betting and Sponsorship Decisions: Help betting platforms and sponsors make informed choices based on predictive modeling.
+Support Player Strategy: Provide actionable insights on matchup strengths and weaknesses to refine competitive strategies.
+
+Key Performance Indicators (KPIs):
+Prediction Accuracy: Measure how accurately the model forecasts top 8 tournament placements.
+Upset Prediction: Evaluate the model's ability to predict unexpected outcomes or underdog victories.
+Feature Importance Analysis: Identify which factors significantly influence tournament results.
+
+Data Source:
+https://github.com/smashdata/ThePlayerDatabase
+This is an SQLite database with 1.8 million sets, 96,689 players, and 39,675 tournaments. There are missing entries that we will need to handle.
+
+Project Approach:
+Data Cleaning and Preprocessing: Handle missing values and ensure data consistency.
+Feature Engineering: Calculate player Elo ratings, analyze matchup statistics, and incorporate recent performance metrics.
+Model Development: Start with baseline models and progress to more complex algorithms if beneficial.
