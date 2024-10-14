@@ -1,2 +1,10 @@
 /data/melee_player_database.db
 /glicko2
+/data/melee_player_database.db
+/glicko2
+/player_ratings_matchup_data/player_ratings_matchup_tau_3_df.pkl
+/player_ratings_matchup_data/player_ratings_matchup_tau_5_df.pkl
+/player_ratings_matchup_data/player_ratings_matchup_tau_7_df.pkl
+/player_ratings_matchup_data/player_ratings_matchup_tau_9_df.pkl
+/player_ratings_matchup_data/player_ratings_matchup_tau_11_df.pkl
+s/player_ratings_matchup_data/player_ratings_matchup_tau_13_df.pkl
