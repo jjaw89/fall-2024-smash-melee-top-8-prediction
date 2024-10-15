@@ -11,3 +11,9 @@
 /data
 /player_ratings_matchup_data/
 /player_ratings_overall_data/overall_players_ranking_based_on_games.pkl
+
+glicko_2_matchup/glicko2_character_tau_3.ipynb
+glicko_2_matchup/glicko2_character_tau_7.ipynb
+glicko_2_matchup/glicko2_character_tau_9.ipynb
+glicko_2_matchup/glicko2_character_tau_11.ipynb
+glicko_2_matchup/glicko2_character_tau_13.ipynb
