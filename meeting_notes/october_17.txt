@@ -1,0 +1,50 @@
+Feature Engineering:
+    -Glicko-2
+    overall rank is okay.
+    by matchup is not.
+
+Accuracy of glicko-2 over time.
+Explore matchup specific glicko-2.
+    -outliers
+    - why cody sucks
+    - Global distribution. Relative skill of a player in a matchup. Model should figure that out. But it would be interesting.
+
+
+baselines
+
+
+Data Class?
+Dataset that we train on:
+    overall player glicko
+    all matchup glicko (handling mising values)
+    # of games played by each character in each matchup.
+    Player v Player history (time into consideration).
+    -location? how far did they have to travel (missing values)
+    -Any other features we can think of.
+
+Build a dataset.
+    -spitting (split by tournament)?
+
+First model: First train data set 40% Cant train on the top 8.
+-simple set predictor. Takes all features + engineered features, pvp history. Predicts the winner, predict the score?
+-Train on part of the data.
+-Fully connected NN
+-hyperparameters tuned with Optuna
+-Jaspar can build a NN and tune with optuna. Building the dataset is something I don't want to do.
+
+Second model: Second Train dataset 40%
+Top 8 model.
+take the games played by the top 8 players earlier in the tournament and send them through the first model to get a sense if they are playing particularly well that weekend.
+-not the same number of games for all the players
+-not the same number of games every tournament.
+-average the results of all of them.
+
+Trained on a different dataset than the first model? Data leakage.
+How to split the data
+
+There are multiple paths a player can take to the finals.
+-Need to make sure that the bracket is correct. If this player loses, they play the winner of the right game. Extract that from the sets.
+-Run the model on all the possibilities, some likelihood that that happens. Average or sum them up.
+
+Test set 10% ?
+Validation set 10% ?
