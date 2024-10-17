@@ -1,6 +1,6 @@
 # fall-2024-smash-melee-top-8-prediction
 
-The data for this project will be /data/melee_player_database.db and we ignore it in the .gitignore file.
+The data for this project comes from https://github.com/smashdata/ThePlayerDatabase . It will be /data/melee_player_database.db and we ignore it in the .gitignore file.
 
 To Do:
 -make an enviroment.yaml for conda that matches the docker container. We might need to ignore the packages that depend on Cuda.
