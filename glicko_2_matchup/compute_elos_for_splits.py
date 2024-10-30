@@ -117,7 +117,7 @@ def process_file(file_prefix, file, position, total_processes):
 
     grouped_df.groupby('player_char_char').progress_apply(compute_pcc_elo, include_groups=False)
 
-    player_ratings_df.to_pickle(data_path + file_prefix + '_processed_' + str(file_number) + '.pkl')
+    player_ratings_df.to_pickle(data_path + file_prefix + '_processed_' + str(position) + '.pkl')
 
 if __name__ == '__main__':
     processes = []
