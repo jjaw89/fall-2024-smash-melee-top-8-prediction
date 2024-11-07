@@ -73,6 +73,7 @@ def process_file(file_prefix, file, position, total_processes):
 
     # Pre-allocating the dataframe for maximum efficiency.
     player_ratings_df = pd.DataFrame([[1500.0] * len(unique_players)], columns=unique_players, index=list(dates.values()))
+    player_rds_df = pd.DataFrame([[350.0] * len(unique_players)], columns=unique_players, index=list(dates.values()))
 
     # The actual code to compute elo for each player/char/char combo.
     # This will be done by a groupby and apply
@@ -108,6 +109,7 @@ def process_file(file_prefix, file, position, total_processes):
                 glicko_object.setRd(MAX_RD)
 
             player_ratings_df.loc[initial_date + index*interval, pcc] = glicko_object.getRating()
+            player_rds_df.loc[initial_date + index*interval, pcc] = glicko_object.getRd()
 
     mininterval = 1.0
     tqdm.pandas(position=position, mininterval=mininterval, desc='File ' + str(position))
@@ -118,6 +120,7 @@ def process_file(file_prefix, file, position, total_processes):
     grouped_df.groupby('player_char_char').progress_apply(compute_pcc_elo, include_groups=False)
 
     player_ratings_df.to_pickle(data_path + file_prefix + '_processed_' + str(position) + '.pkl')
+    player_rds_df.to_pickle(data_path + file_prefix + '_rds_processed_' + str(position) + '.pkl')
 
 if __name__ == '__main__':
     processes = []
