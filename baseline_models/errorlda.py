@@ -65,10 +65,29 @@ class ErrorLDA:
         total_proportion = 0.0
         proportions = []
 
+        still_too_large = None
+
         for key in exponents:
             exponents[key] -= min_exponent
+
+            if exponents[key] >= 10:
+                still_too_large = key
+                break
+
             total_proportion += self.outcome_fractions[key] * np.exp(exponents[key])
 
+        # Something would still have way too large of an exponent
+        # Kind of janky and assumes something doesn't have comparable size
+        # Not good for classifying >= 3 things
+        #
+        # TODO: FIX PROPERLY!
+        #
+        if still_too_large is not None:
+            for key in exponents:
+                proportions.append(1.0 if key == still_too_large else 0.0)
+            return proportions
+
+        # Nothing too large
         for key in exponents:
             proportions.append(self.outcome_fractions[key] * np.exp(exponents[key]) / total_proportion)
 
