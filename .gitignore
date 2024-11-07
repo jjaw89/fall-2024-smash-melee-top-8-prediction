@@ -21,3 +21,5 @@ glicko_2_matchup/glicko2_character_tau_13.ipynb
 /data/overall_player_ranking_2.pkl
 /data_exploration/dfs_dict.pkl
 /data/dfs_dict.pkl
+
+__pycache__/
