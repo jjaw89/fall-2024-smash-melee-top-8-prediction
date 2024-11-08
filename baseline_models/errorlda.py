@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from scipy.optimize import minimize
 
 class ErrorLDA:
     outcomes = None
@@ -7,12 +8,157 @@ class ErrorLDA:
     means = {}
     variance = None
 
+    num_calls_debug = 0
+
     def __init__(self):
         pass
 
+    # For a single fixed mean (assuming a constant class)
+    def negative_log_loss_fixed_mean(self, X_train, Sigma, X_minus_mu, X_train_errors=None):
+        # TODO: Surely at least one of these could be done more efficiently
+        # TODO: Handle the "no training errors" case
+        X_overall_errors = X_train_errors.apply(lambda x: x + Sigma)
+
+        first_term = X_overall_errors.apply(lambda E: np.log(np.linalg.det(E))).sum()
+
+        #second_term = sum((row @ np.linalg.inv(X_overall_errors[i]) @ row) for i, row in X_minus_mu.iterrows())
+
+        # SUBSTANTIALLY more efficient than it was initially
+        second_term = np.einsum('ij,ijk,ik->i',
+                                X_minus_mu.values,
+                                np.stack(X_overall_errors.apply(np.linalg.inv).values),
+                                X_minus_mu.values).sum()
+
+        return 0.5*(first_term + second_term)
+    
+
+    def negative_log_loss(self, X_train_splits, Sigma, X_minus_mu_splits, X_train_errors_splits=None):
+
+        total_log_loss = 0.0
+
+        for c in self.outcomes:
+            current_log_loss = self.negative_log_loss_fixed_mean(X_train_splits[c], Sigma, X_minus_mu_splits[c],
+                                                                 X_train_errors=X_train_errors_splits[c])
+            
+            total_log_loss += current_log_loss
+            
+        return total_log_loss
+
+
+    def fit(self, X_train, y_train, X_train_errors=None):
+        self.outcomes = list(y_train.unique())
+        self.outcomes.sort()
+
+        X_train_splits = {}
+        X_minus_mu_splits = {}
+        X_train_errors_splits = {}
+
+        # TODO: Perhaps far more efficient to only split the data once
+        #       and not split every single time.
+        for c in self.outcomes:
+            X_train_outcome = X_train[y_train == c]
+
+            self.outcome_fractions[c] = len(X_train_outcome.index) / len(X_train.index)
+
+            # Self-explanatory
+            self.means[c] = X_train_outcome.mean(axis=0)
+            
+            # Save for when we try to optimize, just to avoid having to re-split over and over again 
+            X_train_splits[c] = X_train_outcome           
+            X_minus_mu_splits[c] = X_train_outcome.apply(lambda x: x.values - self.means[c], axis=1)
+            X_train_errors_splits[c] = X_train_errors[y_train == c]
+
+            
+
+        # Perform gradient descent
+        # First, we parameterize Sigma using Log-Cholesky parametrization
+        n = len(X_train.columns) # Sigma is n by n
+        n_lower = (n-1)*n // 2 # elements of the strictly lower triangular matrix
+        n_diag = n # number of elements on the diagonal (obvious)
+
+        params = np.zeros(n_lower + n_diag)
+
+        def get_L(params):
+            L = np.zeros(shape=(n,n))
+
+            # The strictly lower triangular part
+            row = 0
+            col = 0
+            for i in range(0, n_lower):
+                if row == col:
+                    col = 0
+                    row += 1
+                L[row,col] = params[i]
+                col += 1
+
+            # The diagonal part
+            for i in range(0, n_diag):
+                L[i,i] = np.exp(params[n_lower + i])
+
+            return L
+        
+        def get_Sigma(params):
+            L = get_L(params)
+            return np.matmul(L, L.T)
+        
+        """
+        learning_rate = 1.0
+        gradient_calc_step = 0.1
+        epsilon = 0.000001
+        improvement = 100.0 # Dummy value for initial "improvement" in loss
+
+        Sigma = get_Sigma(params) # The default value of Sigma, should be the identity matrix
+        loss = self.negative_log_loss(X_train, y_train, Sigma, X_train_errors=X_train_errors)
+
+        while improvement > epsilon:
+            gradient = np.zeros(params.shape[0])
+
+            for i in range(0,n):
+                test_params = params.copy()
+                test_params[i] += gradient_calc_step
+                test_Sigma = get_Sigma(test_params)
+                test_loss = self.negative_log_loss(X_train, y_train, test_Sigma, X_train_errors=X_train_errors)
+
+                gradient[i] = (test_loss - loss) / gradient_calc_step
+
+            print(gradient)
+
+            params -= gradient * learning_rate
+            Sigma = get_Sigma(params)
+            old_loss = loss
+            loss = self.negative_log_loss(X_train, y_train, Sigma, X_train_errors=X_train_errors)
+
+            improvement = old_loss - loss
+            print(loss)
+
+            # NOTE: This could actually end one step too late, on an increased value of loss
+        """
+
+        self.num_calls_debug = 0
+
+        def objective_function(params):
+            self.num_calls_debug += 1
+
+            # Diagonal entries are generated as e^(...)
+            # Let's avoid overflow and other problems.
+            for i in range(n_lower, n_lower + n_diag):
+                if params[i] > 20.0:
+                    return 1000.0 * 1000.0 * 1000.0
+
+            return self.negative_log_loss(X_train_splits, get_Sigma(params), X_minus_mu_splits, X_train_errors_splits=X_train_errors_splits)
+        
+        best_params = minimize(objective_function, params.copy()).x
+        print("Objective function called {0} times".format(self.num_calls_debug))
+        print(best_params)
+        print(get_Sigma(best_params))
+
+        self.variance = get_Sigma(best_params)
+
+
+
     # Kind of assuming for now that X_train and y_train are pandas arrays
     # I might convert this to numpy code later.
-    def fit(self, X_train, y_train, X_train_errors=None):
+    def fit_old(self, X_train, y_train, X_train_errors=None):
         self.outcomes = list(y_train.unique())
         self.outcomes.sort()
 
@@ -31,10 +177,10 @@ class ErrorLDA:
             # This is more of an approximation.
             self.variance += X_train_outcome.cov().values * float(len(X_train_outcome.index))
             
-            if X_train_errors is not None:
-                errors_outcome = X_train_errors[y_train == c]
-                for error in errors_outcome:
-                    self.variance = self.variance - error
+            #if X_train_errors is not None:
+            #    errors_outcome = X_train_errors[y_train == c]
+            #    for error in errors_outcome:
+            #        self.variance = self.variance - error
 
         self.variance /= len(X_train.index)
 
@@ -70,7 +216,7 @@ class ErrorLDA:
         for key in exponents:
             exponents[key] -= min_exponent
 
-            if exponents[key] >= 10:
+            if exponents[key] >= 10.0:
                 still_too_large = key
                 break
 
@@ -104,12 +250,23 @@ class ErrorLDA:
 
     
     def debug_func(self):
+        print("Means")
         for key in self.means:
             print(self.means[key])
 
+        print()
+        print("Outcomes (classes)")
         print(self.outcomes)
 
+        print()
+        print("Outcome fractions")
         for key in self.outcome_fractions:
             print(self.outcome_fractions[key])
 
+        print()
+        print("The underlying variance matrix")
         print(self.variance)
+
+        print()
+        print("Eigenvalues of the underlying variance matrix")
+        print(np.linalg.eig(self.variance)[0])
