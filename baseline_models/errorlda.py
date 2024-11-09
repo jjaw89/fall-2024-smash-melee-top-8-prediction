@@ -7,6 +7,7 @@ class ErrorLDA:
     outcome_fractions = {}
     means = {}
     variance = None
+    error_scaler = None
 
     num_calls_debug = 0
 
@@ -14,7 +15,13 @@ class ErrorLDA:
         pass
 
     # For a single fixed mean (assuming a constant class)
-    def negative_log_loss_fixed_mean(self, X_train, Sigma, X_minus_mu, X_train_errors=None):
+    def negative_log_loss_fixed_mean(self, X_train, Sigma, X_minus_mu, X_train_errors=None, error_scaler=None):
+       
+
+        # Convert to a matrix and scale errors appropriately
+        error_scaler = np.identity(Sigma.shape[0]) if error_scaler is None else error_scaler
+        X_train_errors = X_train_errors.apply(lambda x: np.matmul(x, error_scaler))
+
         # TODO: Surely at least one of these could be done more efficiently
         # TODO: Handle the "no training errors" case
         X_overall_errors = X_train_errors.apply(lambda x: x + Sigma)
@@ -32,20 +39,21 @@ class ErrorLDA:
         return 0.5*(first_term + second_term)
     
 
-    def negative_log_loss(self, X_train_splits, Sigma, X_minus_mu_splits, X_train_errors_splits=None):
+    def negative_log_loss(self, X_train_splits, Sigma, X_minus_mu_splits,
+                          X_train_errors_splits=None, error_scaler=None):
 
         total_log_loss = 0.0
 
         for c in self.outcomes:
             current_log_loss = self.negative_log_loss_fixed_mean(X_train_splits[c], Sigma, X_minus_mu_splits[c],
-                                                                 X_train_errors=X_train_errors_splits[c])
+                                                                 X_train_errors=X_train_errors_splits[c], error_scaler=error_scaler)
             
             total_log_loss += current_log_loss
             
         return total_log_loss
 
 
-    def fit(self, X_train, y_train, X_train_errors=None):
+    def fit(self, X_train, y_train, X_train_errors=None, error_scaling=False):
         self.outcomes = list(y_train.unique())
         self.outcomes.sort()
 
@@ -76,7 +84,7 @@ class ErrorLDA:
         n_lower = (n-1)*n // 2 # elements of the strictly lower triangular matrix
         n_diag = n # number of elements on the diagonal (obvious)
 
-        params = np.zeros(n_lower + n_diag)
+        params = np.zeros(n_lower + n_diag + n_diag)
 
         def get_L(params):
             L = np.zeros(shape=(n,n))
@@ -101,39 +109,9 @@ class ErrorLDA:
             L = get_L(params)
             return np.matmul(L, L.T)
         
-        """
-        learning_rate = 1.0
-        gradient_calc_step = 0.1
-        epsilon = 0.000001
-        improvement = 100.0 # Dummy value for initial "improvement" in loss
-
-        Sigma = get_Sigma(params) # The default value of Sigma, should be the identity matrix
-        loss = self.negative_log_loss(X_train, y_train, Sigma, X_train_errors=X_train_errors)
-
-        while improvement > epsilon:
-            gradient = np.zeros(params.shape[0])
-
-            for i in range(0,n):
-                test_params = params.copy()
-                test_params[i] += gradient_calc_step
-                test_Sigma = get_Sigma(test_params)
-                test_loss = self.negative_log_loss(X_train, y_train, test_Sigma, X_train_errors=X_train_errors)
-
-                gradient[i] = (test_loss - loss) / gradient_calc_step
-
-            print(gradient)
-
-            params -= gradient * learning_rate
-            Sigma = get_Sigma(params)
-            old_loss = loss
-            loss = self.negative_log_loss(X_train, y_train, Sigma, X_train_errors=X_train_errors)
-
-            improvement = old_loss - loss
-            print(loss)
-
-            # NOTE: This could actually end one step too late, on an increased value of loss
-        """
-
+        def get_scaler(params):
+            return np.diag(1 / (1 + np.exp( - params[n_lower + n_diag : ] ))) if error_scaling else np.identity(n)
+        
         self.num_calls_debug = 0
 
         def objective_function(params):
@@ -145,46 +123,21 @@ class ErrorLDA:
                 if params[i] > 20.0:
                     return 1000.0 * 1000.0 * 1000.0
 
-            return self.negative_log_loss(X_train_splits, get_Sigma(params), X_minus_mu_splits, X_train_errors_splits=X_train_errors_splits)
+            return self.negative_log_loss(X_train_splits, get_Sigma(params), X_minus_mu_splits,
+                                          X_train_errors_splits=X_train_errors_splits, error_scaler=get_scaler(params))
         
         best_params = minimize(objective_function, params.copy()).x
         print("Objective function called {0} times".format(self.num_calls_debug))
-        print(best_params)
+        print("Estimated Sigma:")
         print(get_Sigma(best_params))
+        print()
+        print("Estimated scaler:")
+        print(get_scaler(best_params))
 
         self.variance = get_Sigma(best_params)
+        self.error_scaler = get_scaler(best_params)
 
-
-
-    # Kind of assuming for now that X_train and y_train are pandas arrays
-    # I might convert this to numpy code later.
-    def fit_old(self, X_train, y_train, X_train_errors=None):
-        self.outcomes = list(y_train.unique())
-        self.outcomes.sort()
-
-        # Build the variance by adding to it and then rescaling
-        self.variance = np.zeros(shape=(len(X_train.columns), len(X_train.columns)))
-        
-        for c in self.outcomes:
-            X_train_outcome = X_train[y_train == c]
-
-            self.outcome_fractions[c] = len(X_train_outcome.index) / len(X_train.index)
-
-            # Self-explanatory
-            self.means[c] = X_train_outcome.mean(axis=0)
-
-            # TODO: Actually compute the proper MLE estimator
-            # This is more of an approximation.
-            self.variance += X_train_outcome.cov().values * float(len(X_train_outcome.index))
-            
-            #if X_train_errors is not None:
-            #    errors_outcome = X_train_errors[y_train == c]
-            #    for error in errors_outcome:
-            #        self.variance = self.variance - error
-
-        self.variance /= len(X_train.index)
-
-    def predict_proba_one(self, x, x_error=None):
+    def predict_proba_one(self, x, x_error=None, error_scaler=None):
 
         exponents = {}
 
@@ -193,6 +146,7 @@ class ErrorLDA:
             mu_c = self.means[c]
             Sigma = self.variance
             D = np.zeros(shape=(len(x.columns), len(x.columns))) if x_error is None else x_error
+            D = D if error_scaler is None else np.matmul(D, error_scaler)
 
             # Internal computations
             h = np.linalg.inv(D).dot(x) + np.linalg.inv(Sigma).dot(mu_c)
@@ -244,7 +198,8 @@ class ErrorLDA:
 
         for i in range(0, len(X.index)):
             predictions.append(self.predict_proba_one(X.iloc[i],
-                                                      x_error=None if X_error is None else X_error.iloc[i]))
+                                                      x_error=None if X_error is None else X_error.iloc[i],
+                                                      error_scaler=self.error_scaler))
             
         return pd.DataFrame(predictions, columns=self.outcomes)
 
@@ -266,6 +221,10 @@ class ErrorLDA:
         print()
         print("The underlying variance matrix")
         print(self.variance)
+
+        print()
+        print("The underlying scaler")
+        print(self.error_scaler)
 
         print()
         print("Eigenvalues of the underlying variance matrix")
