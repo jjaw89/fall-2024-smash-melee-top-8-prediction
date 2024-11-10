@@ -4,7 +4,7 @@ from scipy.optimize import minimize
 
 class ErrorLDA:
     outcomes = None
-    outcome_fractions = {}
+    outcome_fractions = None
     means = {}
     variance = None
     error_scaler = None
@@ -68,16 +68,18 @@ class ErrorLDA:
         self.outcomes = list(y_train.unique())
         self.outcomes.sort()
 
+        self.outcome_fractions = np.zeros(len(self.outcomes))
+
         X_train_splits = {}
         X_minus_mu_splits = {}
         X_train_errors_splits = {}
 
         # TODO: Perhaps far more efficient to only split the data once
         #       and not split every single time.
-        for c in self.outcomes:
+        for i_c, c in enumerate(self.outcomes):
             X_train_c = X_train[y_train == c]
 
-            self.outcome_fractions[c] = len(X_train_c.index) / len(X_train.index)
+            self.outcome_fractions[i_c] = len(X_train_c.index) / len(X_train.index)
 
             # Self-explanatory
             self.means[c] = X_train_c.mean(axis=0)
@@ -86,7 +88,7 @@ class ErrorLDA:
             # Note that these will be saved as pure numpy arrays, rather than dataframes.
             # Speed is of the utmost importance here.
             X_train_splits[c] = X_train_c.to_numpy()
-            X_minus_mu_splits[c] = X_train_c.apply(lambda row: row.values - self.means[c], axis=1).to_numpy()
+            X_minus_mu_splits[c] = X_train_c.apply(lambda row: row.to_numpy() - self.means[c], axis=1).to_numpy()
             X_train_errors_splits[c] = np.stack(X_train_errors[y_train == c].to_numpy())
 
         # First, we parameterize Sigma using Log-Cholesky parametrization
@@ -143,81 +145,68 @@ class ErrorLDA:
                                           X_train_errors_splits=X_train_errors_splits, error_scaler=get_scaler(params))
         
         best_params = minimize(objective_function, params.copy()).x
-        print("Objective function called {0} times".format(self.num_calls_debug))
-        print("Estimated Sigma:")
-        print(get_Sigma(best_params))
-        print()
-        print("Estimated scaler:")
-        print(get_scaler(best_params))
 
         self.variance = get_Sigma(best_params)
         self.error_scaler = get_scaler(best_params)
 
-    def predict_proba_one(self, x, x_error=None, error_scaler=None):
-
-        exponents = {}
-
-        for c in self.outcomes:
-            # Scalar, fraction in that class
-            mu_c = self.means[c]
-            Sigma = self.variance
-            D = np.zeros(shape=(len(x.columns), len(x.columns))) if x_error is None else x_error
-            D = D if error_scaler is None else np.matmul(D, error_scaler)
-
-            # Internal computations
-            h = np.linalg.inv(D).dot(x) + np.linalg.inv(Sigma).dot(mu_c)
-            B = np.linalg.inv(np.linalg.inv(D) + np.linalg.inv(Sigma))
-
-            # P(x|c) is proportional to this
-            exponent = (1/2) * (B.dot(h).dot(h) - np.linalg.inv(Sigma).dot(mu_c).dot(mu_c))
-
-            exponents[c] = exponent 
-
-        # Numerical stability stuff.
-        # Things are proportional to e^(...), but those exponents can be HUGE.
-        # Hence, we will subtract off the minimum one.
-
-        min_exponent = min(exponents.values())
-        total_proportion = 0.0
-        proportions = []
-
-        still_too_large = None
-
-        for key in exponents:
-            exponents[key] -= min_exponent
-
-            if exponents[key] >= 10.0:
-                still_too_large = key
-                break
-
-            total_proportion += self.outcome_fractions[key] * np.exp(exponents[key])
-
-        # Something would still have way too large of an exponent
-        # Kind of janky and assumes something doesn't have comparable size
-        # Not good for classifying >= 3 things
-        #
-        # TODO: FIX PROPERLY!
-        #
-        if still_too_large is not None:
-            for key in exponents:
-                proportions.append(1.0 if key == still_too_large else 0.0)
-            return proportions
-
-        # Nothing too large
-        for key in exponents:
-            proportions.append(self.outcome_fractions[key] * np.exp(exponents[key]) / total_proportion)
-
-        return proportions
     
     def predict_proba(self, X, X_error=None):
-        predictions = []
+        # Convert to nummpy, for efficiency purposes
+        # TODO: Check data types!
+        X = X.to_numpy()
+        X_error = np.stack(X_error.to_numpy())
 
-        for i in range(0, len(X.index)):
-            predictions.append(self.predict_proba_one(X.iloc[i],
-                                                      x_error=None if X_error is None else X_error.iloc[i],
-                                                      error_scaler=self.error_scaler))
+        # Rescaled if appropriate
+        X_error = X_error if self.error_scaler is None else X_error @ self.error_scaler
+
+        # Store results. Columns correspond to the individual classes.
+        # Probabilities are proportional to e^(...), but that exponent can be huge.
+        # For numerical stability reasons, we will fix that before computing probabilities.
+        exponents = np.zeros(shape=(X.shape[0], len(self.outcomes)))
+        probabilities = np.zeros(shape=(X.shape[0], len(self.outcomes)))
+
+        # For efficiency, can be computed ahead of time.
+        Sigma_inv = np.linalg.inv(self.variance)
+
+        for i_c, c in enumerate(self.outcomes):
+            mu_c = self.means[c]
+
+            # Some internal computations that pop out of the math.
+            # h = D^{-1}x + \Sigma^{-1}\mu
+            # B = {D^{-1} + \Sigma^{-1}}^{-1}
+            h = np.einsum('ijk,ik->ij', np.linalg.inv(X_error), X) + (Sigma_inv @ mu_c)
+            B = np.linalg.inv(np.linalg.inv(X_error) + Sigma_inv)
+
+            # Things are proportional to (class probability) * e^((1/2) * (<Bh,h> + <\Sigma^{-1}\mu,\mu>))
+            exponents[:,i_c] = (1/2) * (np.einsum('ij,ijk,ik->i', h, B, h) - (mu_c @ Sigma_inv @ mu_c))
+
+        # Compute the minimum exponent among classes, and subtract it off.
+        # This avoids things like comparing e^4000 and e^4002.
+        min_exponents = np.min(exponents, axis=1)
+        exponents -= min_exponents.reshape((-1,1))
+
+        # Test for exponents that are still to large.
+        # TODO: This is a little janky, and will not really give proper answers
+        #       if multiple exponents are extremely large. (only possible if >= 3 classes)
+        #       This SHOULD probably fix this eventually.
+        large_exponents = np.any(exponents >= 20.0, axis=1)
+        large_exponents_index = np.argmax(exponents >= 20.0, axis=1)
+
+        # Not quite sure how to do this elegantly without a for loop,
+        # but at this point it doesn't really matter too much.
+        # Most of the computationally intensive work has already been done.
+        for r in range(0, X.shape[0]):
+            if large_exponents[r]:
+                probabilities[r, large_exponents_index[r]] = 1.0 # Rest of this row is kept as zero.
+                continue
+
+            # No large exponents. Things are proportionla to (class probability) * e^(exponent)
+            sizes = np.exp(exponents[r,:]) * self.outcome_fractions
+            total_size = sizes.sum()
             
-        return pd.DataFrame(predictions, columns=self.outcomes)
+            probabilities[r,:] = sizes / total_size
+
+        return probabilities
 
     
     def debug_func(self):
@@ -231,8 +220,7 @@ class ErrorLDA:
 
         print()
         print("Outcome fractions")
-        for key in self.outcome_fractions:
-            print(self.outcome_fractions[key])
+        print(self.outcome_fractions)
 
         print()
         print("The underlying variance matrix")
