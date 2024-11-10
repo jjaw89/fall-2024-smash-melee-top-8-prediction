@@ -16,25 +16,17 @@ class ErrorLDA:
 
     # For a single fixed mean (assuming a constant class)
     def negative_log_loss_fixed_mean(self, X_train, Sigma, X_minus_mu, X_train_errors=None, error_scaler=None):
-       
 
-        # Convert to a matrix and scale errors appropriately
-        error_scaler = np.identity(Sigma.shape[0]) if error_scaler is None else error_scaler
-        X_train_errors = X_train_errors.apply(lambda x: np.matmul(x, error_scaler))
+        # Convert scale errors appropriately
+        X_overall_errors = X_train_errors + Sigma if error_scaler is None else (X_train_errors @ error_scaler) + Sigma
 
-        # TODO: Surely at least one of these could be done more efficiently
-        # TODO: Handle the "no training errors" case
-        X_overall_errors = X_train_errors.apply(lambda x: x + Sigma)
-
-        first_term = X_overall_errors.apply(lambda E: np.log(np.linalg.det(E))).sum()
-
-        #second_term = sum((row @ np.linalg.inv(X_overall_errors[i]) @ row) for i, row in X_minus_mu.iterrows())
+        first_term = np.log(np.linalg.det(X_overall_errors)).sum()
 
         # SUBSTANTIALLY more efficient than it was initially
         second_term = np.einsum('ij,ijk,ik->i',
-                                X_minus_mu.values,
-                                np.stack(X_overall_errors.apply(np.linalg.inv).values),
-                                X_minus_mu.values).sum()
+                                X_minus_mu,
+                                np.linalg.inv(X_overall_errors),
+                                X_minus_mu).sum()
 
         return 0.5*(first_term + second_term)
     
@@ -54,6 +46,25 @@ class ErrorLDA:
 
 
     def fit(self, X_train, y_train, X_train_errors=None, error_scaling=False):
+        # For now, use pandas for convenience.
+        # However, in the actual optimization function, we will use pure numpy
+        # TODO: Might as well do this in pure numpy at some point
+        if not isinstance(y_train, pd.Series):
+            y_train = pd.Series(y_train)
+
+        if not isinstance(X_train, pd.DataFrame):
+            X_train = pd.DataFrame(X_train)
+
+        if not isinstance(X_train_errors, pd.Series):
+            X_train_errors = pd.Series(X_train)
+
+        # Get rid of annoying index nonsense
+        # Note that this will also create copies of the data, to avoid messing around with the original values.
+        # TODO: CHECK THESE ARE COPIES!
+        X_train = X_train.reset_index(drop=True)
+        y_train = y_train.reset_index(drop=True)
+        X_train_errors = X_train_errors.reset_index(drop=True)
+
         self.outcomes = list(y_train.unique())
         self.outcomes.sort()
 
@@ -64,26 +75,30 @@ class ErrorLDA:
         # TODO: Perhaps far more efficient to only split the data once
         #       and not split every single time.
         for c in self.outcomes:
-            X_train_outcome = X_train[y_train == c]
+            X_train_c = X_train[y_train == c]
 
-            self.outcome_fractions[c] = len(X_train_outcome.index) / len(X_train.index)
+            self.outcome_fractions[c] = len(X_train_c.index) / len(X_train.index)
 
             # Self-explanatory
-            self.means[c] = X_train_outcome.mean(axis=0)
+            self.means[c] = X_train_c.mean(axis=0)
             
-            # Save for when we try to optimize, just to avoid having to re-split over and over again 
-            X_train_splits[c] = X_train_outcome           
-            X_minus_mu_splits[c] = X_train_outcome.apply(lambda x: x.values - self.means[c], axis=1)
-            X_train_errors_splits[c] = X_train_errors[y_train == c]
+            # Save for when we try to optimize, just to avoid having to re-split over and over again.
+            # Note that these will be saved as pure numpy arrays, rather than dataframes.
+            # Speed is of the utmost importance here.
+            X_train_splits[c] = X_train_c.to_numpy()
+            X_minus_mu_splits[c] = X_train_c.apply(lambda row: row.values - self.means[c], axis=1).to_numpy()
+            X_train_errors_splits[c] = np.stack(X_train_errors[y_train == c].to_numpy())
 
-            
-
-        # Perform gradient descent
         # First, we parameterize Sigma using Log-Cholesky parametrization
+        # That is, Sigma = LL^T, where L = M + e^D, where M is strictly lower diagonal (zeros on diagonal), and D is diagonal.
+
         n = len(X_train.columns) # Sigma is n by n
         n_lower = (n-1)*n // 2 # elements of the strictly lower triangular matrix
         n_diag = n # number of elements on the diagonal (obvious)
 
+        # Strictly lower entries of L (i.e. M above)
+        # Parameterized diagonal entries of L (i.e. D, which gets turned into e^D)
+        # Final few parameters are reserved for variance-scaling, if that gets used.
         params = np.zeros(n_lower + n_diag + n_diag)
 
         def get_L(params):
@@ -112,6 +127,7 @@ class ErrorLDA:
         def get_scaler(params):
             return np.diag(1 / (1 + np.exp( - params[n_lower + n_diag : ] ))) if error_scaling else np.identity(n)
         
+        # Just to keep track of how often the objective function was called. For testing performance.
         self.num_calls_debug = 0
 
         def objective_function(params):
@@ -121,7 +137,7 @@ class ErrorLDA:
             # Let's avoid overflow and other problems.
             for i in range(n_lower, n_lower + n_diag):
                 if params[i] > 20.0:
-                    return 1000.0 * 1000.0 * 1000.0
+                    return 1000.0 * 1000.0 * 1000.0 # Huge penalty
 
             return self.negative_log_loss(X_train_splits, get_Sigma(params), X_minus_mu_splits,
                                           X_train_errors_splits=X_train_errors_splits, error_scaler=get_scaler(params))
