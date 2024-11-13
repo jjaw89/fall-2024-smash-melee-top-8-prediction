@@ -127,7 +127,8 @@ class ErrorLDA:
             return np.matmul(L, L.T)
         
         def get_scaler(params):
-            return np.diag(1 / (1 + np.exp( - params[n_lower + n_diag : ] ))) if error_scaling else np.identity(n)
+            #return np.diag(1 / (1 + np.exp( - params[n_lower + n_diag : ] ))) if error_scaling else np.identity(n)
+            return np.diag(params[n_lower + n_diag : ]) + np.identity(n) if error_scaling else np.identity(n)
         
         # Just to keep track of how often the objective function was called. For testing performance.
         self.num_calls_debug = 0
@@ -144,7 +145,44 @@ class ErrorLDA:
             return self.negative_log_loss(X_train_splits, get_Sigma(params), X_minus_mu_splits,
                                           X_train_errors_splits=X_train_errors_splits, error_scaler=get_scaler(params))
         
-        best_params = minimize(objective_function, params.copy()).x
+        # A rough initial estimate. The original covariance matrix, minus the average error.
+        Sigma_guess = X_train.cov().to_numpy()
+        if X_train_errors is not None:
+            Sigma_guess -= X_train_errors.sum() / len(X_train_errors.index)
+        # Deal with small, potentially negative eigenvalues in the above matrix
+        min_eigenvalue = np.min(np.linalg.eig(Sigma_guess)[0])
+        if min_eigenvalue < 1.0:
+            Sigma_guess -= (min_eigenvalue - 1) * np.identity(n) # Minimum eigenvalue of 1 now
+        
+        def Sigma_to_params(Sigma):
+            L = np.linalg.cholesky(Sigma)
+            L = L @ np.diag(np.sign(np.diag(L))) # Correct for non-positive stuff on the diagonal
+            
+            result = np.zeros(n_lower + n_diag)
+
+            # The strictly lower triangular part
+            row = 0
+            col = 0
+            for i in range(0, n_lower):
+                if row == col:
+                    col = 0
+                    row += 1
+                result[i] = L[row,col]
+                col += 1
+
+            # The diagonal part
+            result[n_lower : ] = np.log(np.diag(L))
+
+            return result
+
+        # Initial guess for Sigma as above, plus identity matrix for the scaler.
+        x0 = np.concatenate([Sigma_to_params(Sigma_guess), np.zeros(n_diag)]) if error_scaling else Sigma_to_params(Sigma_guess)
+
+        # Recall that the scaler is centered at the identity matrix. Bounds represent deviations on each diagonal entry there.
+        bounds = [(None, None)] * (n_lower + n_diag) + [(-0.9, 0.1)] * n_diag if error_scaling else [(None, None)] * (n_lower + n_diag)
+
+        # There are technically no bounds present when we have no error scaling. Hopefully this forces things to be sped up.
+        best_params = minimize(objective_function, x0=x0, bounds=bounds).x if error_scaling else minimize(objective_function, x0=x0).x
 
         self.variance = get_Sigma(best_params)
         self.error_scaler = get_scaler(best_params)
