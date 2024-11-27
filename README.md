@@ -15,21 +15,14 @@ Our aim in this capstone project is the same as for any other sport - predict th
 
 There already exists a very widely used ELO-based rating system called the [Glicko rating system](https://en.wikipedia.org/wiki/Glicko_rating_system), and we wanted to see if we could perform *better* than a baseline model of "whoever has the higher ELO". In many instances, especially for predicting the outcomes of individual sets, the answer is a definitive *yes*.
 
-In many ways, this project was heavily focused on feature engineering and processing large amounts of data efficiently, rather than blindly tossing some super sophisticated AI model at the data and calling it a day.
+In many ways, this project was heavily focused on feature engineering and processing large amounts of data efficiently (millions of rows of data to work with), rather than blindly tossing some super sophisticated AI model at the data and calling it a day.
 
 
 ## Methodology and results
 
 ### Single-set models
 
-Data on previous Super Smash Bros tournaments (as SQLite databases) was obtained from [this GitHub repo](https://github.com/smashdata/ThePlayerDatabase). After some initial data cleanup, we computed weekly ratings of each of the players, and this establishes our baseline for single-set data (whoever has the higher ELO). A slightly more sophisticated model is also included to account for various factors (such as ELO being exactly the default starting value of 1500.0 and being inaccurate).
-
-The following showcases how well our baseline models perform on data from 2024. The sample sizes involved are enormous (tens to hundreds of thousands), and we obtain quite tight 95% confidence intervals.
-
-| **Baseline models / Accuracy**     | All sets      | Top 8 sets    |
-|------------------------------------|---------------|---------------|
-| "Whoever has the higher ELO"       | 77.56 +- 0.16 | 73.89 +- 0.36 |
-| XGBoost trained only on player ELO | 79.05 +- 0.16 | 74.04 +- 0.36 |
+Data on previous Super Smash Bros tournaments (as SQLite databases) was obtained from [this GitHub repo](https://github.com/smashdata/ThePlayerDatabase). After some initial data cleanup, we computed weekly ratings of each of the players, and this establishes our baseline for single-set data (whoever has the higher ELO).
 
 From here, our main goal was to improve upon the above baselines by engineering extra features that a machine learning model may use. The following highlights our main successful attempts at doing so.
 
@@ -49,7 +42,7 @@ Finally, we also have:
 
 * Keeping track of how often any pair of players (player_1, player_2) have played before, and tossing the results of their last ten matches in as a list of features.
 
-We again trained an XGBoost model on the above list of features, and we obtain a small but noticeable (and evidently statistically significant) increase in accuracy.
+We again trained an XGBoost model on the above list of features, and we obtain a small but noticeable (and evidently statistically significant) increase in accuracy. All models are finally tested on data from 2024, and the number of data points in the test set is quite large (in the hundreds of thousands), hence the fairly small 95% confidence intervals.
 
 | **Models / Accuracy**              | All sets      | Top 8 sets    |
 |------------------------------------|---------------|---------------|
@@ -61,7 +54,30 @@ We again trained an XGBoost model on the above list of features, and we obtain a
 
 ### Top 8 models
 
-With the above single-set prediction model in hand (which is capable of outputting probabilities of winning, and not just binary predictions), we moved on to predicting 
+With the above single-set prediction model in hand (which is capable of outputting probabilities of winning, and not just binary predictions), we moved on to predicting the winner of the final eight players (top 8) out of any given tournament.
+
+We will mention this ahead of time, but unfortunately the results obtained here are not nearly as definitive as in the single-set case. Specifically, there is a fairly good couple of baseline models that have unusually good performance.
+
+* The first is simply choosing the player with the highest ELO out of the top 8.
+
+* The second comes from the observation that, based on how most typical top 8 bracket structures work, it is substantially more likely that a player from the four winners' side brackets wins. Hence, we could also just choose the person with the highest elo in the winners' semifinals (WSF).
+
+For figuring out additional features that we could use - we have data on what sets a player has played to get to the top 8, and we moreover have our single-set predictor from before that can also output reasonably accurate win/loss probabilities, not just the binary outcome. As such, the two main features that come to mind are:
+
+* Computing how "likely" it was that they made it to the top 8, given the probabilities of winning/losing each set that they took to get there. The intention is to see if they are having an unusually good or bad performance during the specific tournament that they are playing.
+
+* Computing the pairwise probabilities that each of the top 8 players have for winning/losing against each other.
+
+In short, while these additional features seem to hold their own, the difference is not significant enough to tell if they have a similar performance or not. This is tested on data from 2024, with about 5000 data points.
+
+| **Models**                                  | **Accuracy** |
+|---------------------------------------------|--------------|
+| "Whoever has the higher ELO out of top 8"   | 67.6 +- 1.3  |
+| "Whoever has the higher ELO out of WSF (4)" | 70.2 +- 1.3  |
+| XGBoost on engineered features              | 70.0 +- 1.3  |
+| XGBoost on engineered features + ELO        | 70.1 +- 1.3  |
+
+A small note is that the single-set predictor was trained on data up to the end of 2022, and then the top 8 predictor was trained on data from 2023 only, in order to avoid data leakage.
 
 
 
