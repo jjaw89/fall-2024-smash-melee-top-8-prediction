@@ -107,7 +107,12 @@ Note that ``default_elo.ipynb`` and ``engineered_elo_alt3.ipynb`` can be run sta
 
 ### Generating the final dataset
 
-Open the ``dataset_generation`` folder, and run the ``dataset_generator.ipynb`` file. It will take all of the necessary information from whatever was generated in the ``data`` folder, and combine it into one final ``
+Open the ``dataset_generation`` folder, and run the ``dataset_generator.ipynb`` file. It will take all of the necessary information from whatever was generated in the ``data`` folder, and combine it into one final ``dataset_full.pkl`` file.
 
+### Benchmarking and training various models.
 
-In some sense, Glicko2 ratings are time-series data for each of the players. In another sense, they are not, as each of the ratings already takes into account all of their past performance to compute their skill level up to a certain point. Nevertheless, to avoid any possibility of data leakage, we always trained our models on data up to a certain point, and tested on data after.
+Finally, open the ``models`` folder. We have:
+
+* The file ``single_set_model.ipynb`` benchmarks and saves the resulting single-set predictor. This is required in order to run the top 8 predictor below. **NOTE:** This file contains a lot of skippable code (labeled as such) that tests performance of experimental, but ultimately sub-par, models.
+
+* The file ``top_8_model.ipynb`` benchmarks a top 8 predictor against various baselines.
