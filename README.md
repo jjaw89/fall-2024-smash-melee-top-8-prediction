@@ -101,7 +101,7 @@ Note that ``default_elo.ipynb`` and ``engineered_elo_alt3.ipynb`` can be run sta
 
 * Run ``engineered_elo_alt.ipynb`` and ``engineered_elo_alt2.ipynb`` to generate split data files that will be processed afterwards in parallel. This will generate a bunch of ``(...)_temp_N.pkl`` files.
 
-* Run ``compute_elos_for_splits.py`` and follow the instructions on how to process these files (this uses multiprocessing and speeds up the resulting computation substantially). It will output a bunch of ``(...)_processed_N.pkl`` files.
+* Run ``compute_elos_for_splits.py`` and follow the instructions on how to process these files (this uses multiprocessing and speeds up the resulting computation substantially). It will output a bunch of ``(...)_processed_N.pkl`` files. **NOTE:** You will need to do this separately for the files containing the RD values of each player as well! In total, this file should be run four times.
 
 * Run ``remerge.py`` and follow the instructions on merging the above files back into one.
 
@@ -116,3 +116,12 @@ Finally, open the ``models`` folder. We have:
 * The file ``single_set_model.ipynb`` benchmarks and saves the resulting single-set predictor. This is required in order to run the top 8 predictor below. **NOTE:** This file contains a lot of skippable code (labeled as such) that tests performance of experimental, but ultimately sub-par, models.
 
 * The file ``top_8_model.ipynb`` benchmarks a top 8 predictor against various baselines.
+
+
+### Miscellaneous files
+
+As a small note, the following are a list of miscellaneous files that have not yet been described.
+
+* The ``data_exploration`` contains some somewhat disorganized files that were mostly used for data exploration and generating interesting graphics.
+* The ``experimental`` folder contains various experimental files that have not made it in to the final code, but are kept regardless because they may still prove interesting.
+* In the ``models`` folder, the two files ``errorlda*`` relate to an experimental modification of the standard Linear Discriminant Analysis classification model - one where it can also take into account non-constant measurement errors (in this instance, RD values that form part of the Glicko-2 algorithm). It is used in ``single_set_model.ipynb`` for benchmarking various experimental models (the "skippable code" section), but ultimately those underperform the final model.
