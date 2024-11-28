@@ -83,6 +83,31 @@ A small note is that the single-set predictor was trained on data up to the end 
 
 ## Technical details about running the code
 
-There is a slight bias in terms of player 1 winning a set over player 2 (approximately 70%), and it is unclear if this is due to player seeding, or just due to the data being manually entered later. To account for this, we randomize player 1 and player 2.
+The temporary workspace for manipulating data will be the ``data`` folder. To start, the initial database containing past tournament info should be downloaded from [this repo](https://github.com/smashdata/ThePlayerDatabase), and ``melee_player_database.db`` should be placed in the ``data`` folder. This folder will serve as our main workspace for generating temporary/necessary files.
 
-A python implementation of the Glicko-2 algorithm (ELO-like rating) was found [here](https://github.com/deepy/glicko2). In some sense, Glicko2 ratings are time-series data for each of the players. In another sense, they are not, as each of the ratings already takes into account all of their past performance to compute their skill level up to a certain point. Nevertheless, to avoid any possibility of data leakage, we always trained our models on data up to a certain point, and tested on data after.
+### Preprocessing
+
+Afterwards, run the notebooks in the ``preprocessing`` folder in order. These extract the tables from the above database, and perform some basic preprocessing on them, including:
+
+* Randomizing player 1 and player 2, as there is a noticeable bias (around 70%) for player 1 winning. It is unclear if this is due to player seeding or from manually entering the winner.
+
+* Extracting tournaments (and in particular majors as a separate file as well), labeling the top 8 players according to the brackets they are in (winners' side, losers' side, ...), and listing the sets that they have played in order to get to the top 8. It also extracts information from sets that have data on the individual games played (including what characters each player played as).
+
+### Feature engineering (Glicko-2 rating / ELO scores)
+
+Now turn to the ``feature_engineering`` folder, and run each of the files. This will generate Glicko-2 ratings (ELO scores) for each of the players, along with three different variations that take into account which characters they have been playing. The library we are using to compute these scores is [this one](https://github.com/deepy/glicko2).
+
+Note that ``default_elo.ipynb`` and ``engineered_elo_alt3.ipynb`` can be run standalone. For each of ``engineered_elo_alt.ipynb`` and ``engineered_elo_alt2.ipynb``, the following extra steps need to be taken:
+
+* Run ``engineered_elo_alt.ipynb`` and ``engineered_elo_alt2.ipynb`` to generate split data files that will be processed afterwards in parallel. This will generate a bunch of ``(...)_temp_N.pkl`` files.
+
+* Run ``compute_elos_for_splits.py`` and follow the instructions on how to process these files (this uses multiprocessing and speeds up the resulting computation substantially). It will output a bunch of ``(...)_processed_N.pkl`` files.
+
+* Run ``remerge.py`` and follow the instructions on merging the above files back into one.
+
+### Generating the final dataset
+
+Open the ``dataset_generation`` folder, and run the ``dataset_generator.ipynb`` file. It will take all of the necessary information from whatever was generated in the ``data`` folder, and combine it into one final ``
+
+
+In some sense, Glicko2 ratings are time-series data for each of the players. In another sense, they are not, as each of the ratings already takes into account all of their past performance to compute their skill level up to a certain point. Nevertheless, to avoid any possibility of data leakage, we always trained our models on data up to a certain point, and tested on data after.
