@@ -1,5 +1,5 @@
 Smash Melee: Top 8 Prediction
-Jaspar Wiart, Dan Ursu, Sungwoo Nam, Sam Schiavone, Patrick Walsh
+Jaspar Wiart, Dan Ursu
 
 Objective:
 Develop a machine learning model to predict the results of the top 8 bracket of Super Smash Bros. Melee tournaments using historical match data, player performance metrics, and matchup statistics. The goal is to enhance predictive analytics in esports and provide valuable insights into player performance and tournament dynamics.
