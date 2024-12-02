@@ -101,9 +101,9 @@ Note that ``default_elo.ipynb`` and ``engineered_elo_alt3.ipynb`` can be run sta
 
 * Run ``engineered_elo_alt.ipynb`` and ``engineered_elo_alt2.ipynb`` to generate split data files that will be processed afterwards in parallel. This will generate a bunch of ``(...)_temp_N.pkl`` files.
 
-* Run ``compute_elos_for_splits.py`` and follow the instructions on how to process these files (this uses multiprocessing and speeds up the resulting computation substantially). It will output a bunch of ``(...)_processed_N.pkl`` files. **NOTE:** You will need to do this separately for the files containing the RD values of each player as well! In total, this file should be run four times.
+* Run ``compute_elos_for_splits.py`` and follow the instructions on how to process these files (this uses multiprocessing and speeds up the resulting computation substantially). It will output a bunch of ``(...)_processed_N.pkl`` files.
 
-* Run ``remerge.py`` and follow the instructions on merging the above files back into one.
+* Run ``remerge.py`` and follow the instructions on merging the above files back into one. **NOTE:** You will need to do this separately for the files containing the RD values of each player as well! In total, this file should be run four times.
 
 ### Generating the final dataset
 
