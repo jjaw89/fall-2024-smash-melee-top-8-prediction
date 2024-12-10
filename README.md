@@ -44,6 +44,8 @@ Finally, we also have:
 
 We again trained an XGBoost model on the above list of features, and we obtain a small but noticeable (and evidently statistically significant) increase in accuracy. All models are finally tested on data from 2024, and the number of data points in the test set is quite large (in the hundreds of thousands), hence the fairly small 95% confidence intervals.
 
+**NOTE:** Confidence intervals were computed manually based on the accuracy score and sample sizes (n=247,608 and n=58,243 for all sets and top 8 sets, respectively), using the normal approximation method for binomial distributions. See [here](https://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval).
+
 | **Models / Accuracy**              | All sets      | Top 8 sets    |
 |------------------------------------|---------------|---------------|
 | "Whoever has the higher ELO"       | 77.56 +- 0.16 | 73.89 +- 0.36 |
